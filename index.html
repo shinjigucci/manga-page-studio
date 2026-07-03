@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Manga Page Studio</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">M</div>
+          <div>
+            <h1>Manga Page Studio</h1>
+            <p>通常ページ漫画エディタ</p>
+          </div>
+        </div>
+
+        <div class="page-actions">
+          <button id="addPageBtn" class="primary">ページ追加</button>
+          <button id="duplicatePageBtn">複製</button>
+        </div>
+        <div id="pageList" class="page-list"></div>
+
+        <div class="generator-panel">
+          <h2>AI漫画生成</h2>
+          <label class="file-drop">
+            キャラ素材
+            <input id="assetInput" type="file" accept="image/*" multiple />
+          </label>
+          <div id="assetList" class="asset-list"></div>
+
+          <label class="generator-field">
+            ストーリー
+            <textarea id="promptInput" rows="10">朝の教室で、主人公は友だちに「おはよう。今日こそ漫画を完成させよう」と声をかける。友だちは少し焦った顔で「待って、まだ大事なページが残ってる」と言う。夕方の帰り道、主人公は「大丈夫。二人なら最後まで描ける」と笑う。</textarea>
+          </label>
+
+          <div class="generator-actions">
+            <button id="generateMangaBtn" class="primary">漫画を自動生成</button>
+            <button id="downloadAllBtn">全PNG</button>
+          </div>
+          <p id="generationStatus" class="generation-status">ストーリーからセリフ・コマ割りを作ります。</p>
+        </div>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div class="tool-group" aria-label="作画ツール">
+            <button class="tool active" data-tool="pen" title="ペン">✎</button>
+            <button class="tool" data-tool="eraser" title="消しゴム">⌫</button>
+            <button class="tool" data-tool="panel" title="コマ">▣</button>
+            <button class="tool" data-tool="bubble" title="吹き出し">◯</button>
+            <button class="tool" data-tool="text" title="セリフ">T</button>
+            <button class="tool" data-tool="select" title="選択">↖</button>
+          </div>
+
+          <div class="control-strip">
+            <label>
+              線
+              <input id="colorInput" type="color" value="#111111" />
+            </label>
+            <label>
+              太さ
+              <input id="sizeInput" type="range" min="1" max="34" value="6" />
+            </label>
+            <label>
+              文字
+              <input id="fontInput" type="range" min="16" max="54" value="28" />
+            </label>
+          </div>
+
+          <div class="export-actions">
+            <label class="file-button">
+              画像配置
+              <input id="imageInput" type="file" accept="image/*" />
+            </label>
+            <button id="saveBtn">保存</button>
+            <button id="loadBtn">読込</button>
+            <button id="exportBtn" class="primary">PNG</button>
+          </div>
+        </header>
+
+        <section class="canvas-stage" aria-label="漫画ページキャンバス">
+          <canvas id="pageCanvas" width="900" height="1273"></canvas>
+        </section>
+      </main>
+
+      <aside class="inspector">
+        <h2>ページ設定</h2>
+        <div class="field-grid">
+          <label>
+            作品名
+            <input id="titleInput" type="text" value="新しい漫画" />
+          </label>
+          <label>
+            背景
+            <select id="paperInput">
+              <option value="#ffffff">白</option>
+              <option value="#fbfaf7">原稿用紙</option>
+              <option value="#f3f3f3">薄グレー</option>
+            </select>
+          </label>
+        </div>
+
+        <h2>選択中</h2>
+        <div id="selectionPanel" class="selection-panel">
+          <p>コマ、吹き出し、文字、画像を選択すると編集できます。</p>
+        </div>
+
+        <h2>プリセット</h2>
+        <div class="preset-grid">
+          <button data-layout="2v">縦2コマ</button>
+          <button data-layout="3stack">3段</button>
+          <button data-layout="4grid">4コマ</button>
+          <button data-layout="cinema">横長</button>
+        </div>
+
+        <h2>操作</h2>
+        <div class="hint-list">
+          <p>キャラ素材を入れて、左のストーリー欄に文章を貼るだけで生成できます。</p>
+          <p>生成後は選択ツールで移動、Deleteで削除できます。</p>
+        </div>
+      </aside>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
