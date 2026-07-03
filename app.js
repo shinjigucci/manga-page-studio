@@ -86,6 +86,10 @@ function drawObject(obj) {
     ctx.strokeRect(obj.x, obj.y, obj.w, obj.h);
   }
 
+  if (obj.kind === "background") {
+    drawPanelBackground(obj);
+  }
+
   if (obj.kind === "bubble") {
     ctx.beginPath();
     ctx.ellipse(obj.x + obj.w / 2, obj.y + obj.h / 2, Math.abs(obj.w / 2), Math.abs(obj.h / 2), 0, 0, Math.PI * 2);
@@ -108,9 +112,86 @@ function drawObject(obj) {
   }
 
   if (obj.kind === "image" && obj.img) {
-    ctx.drawImage(obj.img, obj.x, obj.y, obj.w, obj.h);
+    drawImageContain(obj.img, obj.x, obj.y, obj.w, obj.h);
   }
   ctx.restore();
+}
+
+function drawPanelBackground(obj) {
+  const gradient = ctx.createLinearGradient(obj.x, obj.y, obj.x, obj.y + obj.h);
+  gradient.addColorStop(0, obj.top || "#eef6fb");
+  gradient.addColorStop(0.64, obj.mid || "#fbfbf8");
+  gradient.addColorStop(0.65, obj.floor || "#e8e0d4");
+  gradient.addColorStop(1, obj.floorDark || "#d4c7b6");
+  ctx.fillStyle = gradient;
+  ctx.fillRect(obj.x, obj.y, obj.w, obj.h);
+
+  ctx.strokeStyle = "rgba(90, 94, 90, 0.16)";
+  ctx.lineWidth = 2;
+  const horizon = obj.y + obj.h * 0.65;
+  ctx.beginPath();
+  ctx.moveTo(obj.x, horizon);
+  ctx.lineTo(obj.x + obj.w, horizon);
+  ctx.stroke();
+
+  if (obj.variant === "classroom" || obj.variant === "room") {
+    drawWindow(obj.x + obj.w * 0.08, obj.y + obj.h * 0.12, obj.w * 0.3, obj.h * 0.32);
+  }
+  if (obj.variant === "hallway") {
+    drawHallLines(obj);
+  }
+  if (obj.variant === "outside") {
+    drawOutsideLines(obj);
+  }
+}
+
+function drawWindow(x, y, w, h) {
+  ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = "rgba(80, 110, 120, 0.26)";
+  ctx.lineWidth = 3;
+  ctx.strokeRect(x, y, w, h);
+  ctx.beginPath();
+  ctx.moveTo(x + w / 2, y);
+  ctx.lineTo(x + w / 2, y + h);
+  ctx.moveTo(x, y + h / 2);
+  ctx.lineTo(x + w, y + h / 2);
+  ctx.stroke();
+}
+
+function drawHallLines(obj) {
+  ctx.strokeStyle = "rgba(90, 84, 74, 0.16)";
+  ctx.lineWidth = 2;
+  for (let i = 1; i < 5; i += 1) {
+    const x = obj.x + (obj.w / 5) * i;
+    ctx.beginPath();
+    ctx.moveTo(x, obj.y + obj.h * 0.65);
+    ctx.lineTo(obj.x + obj.w / 2, obj.y + obj.h * 0.18);
+    ctx.stroke();
+  }
+}
+
+function drawOutsideLines(obj) {
+  ctx.fillStyle = "rgba(111, 151, 92, 0.16)";
+  ctx.fillRect(obj.x, obj.y + obj.h * 0.56, obj.w, obj.h * 0.16);
+  ctx.strokeStyle = "rgba(92, 122, 82, 0.2)";
+  ctx.beginPath();
+  ctx.moveTo(obj.x, obj.y + obj.h * 0.56);
+  ctx.lineTo(obj.x + obj.w, obj.y + obj.h * 0.52);
+  ctx.stroke();
+}
+
+function drawImageContain(img, x, y, maxW, maxH) {
+  const ratio = img.width && img.height ? img.width / img.height : 1;
+  let drawW = maxW;
+  let drawH = drawW / ratio;
+  if (drawH > maxH) {
+    drawH = maxH;
+    drawW = drawH * ratio;
+  }
+  const drawX = x + (maxW - drawW) / 2;
+  const drawY = y + (maxH - drawH) / 2;
+  ctx.drawImage(img, drawX, drawY, drawW, drawH);
 }
 
 function fitTextFontSize(text, maxWidth, maxHeight, baseSize, vertical = false) {
@@ -131,13 +212,17 @@ function fitTextFontSize(text, maxWidth, maxHeight, baseSize, vertical = false) 
 }
 
 function wrapText(text, x, y, maxWidth, maxHeight, fontSize, vertical = false) {
-  const chars = [...text];
+  const chars = [...text.replace(/\s+/g, "")];
   if (vertical) {
     let col = 0;
     let row = 0;
     const lineHeight = fontSize * 1.15;
     const maxRows = Math.max(1, Math.floor(maxHeight / lineHeight));
     const maxCols = Math.max(1, Math.floor(maxWidth / lineHeight));
+    const usedCols = Math.min(maxCols, Math.ceil(chars.filter((char) => char !== "\n").length / maxRows));
+    const usedRows = Math.min(maxRows, chars.filter((char) => char !== "\n").length);
+    const startX = x + (maxWidth + usedCols * lineHeight) / 2 - lineHeight;
+    const startY = y + Math.max(0, (maxHeight - usedRows * lineHeight) / 2);
     chars.forEach((char) => {
       if (char === "\n" || row >= maxRows) {
         col += 1;
@@ -145,7 +230,7 @@ function wrapText(text, x, y, maxWidth, maxHeight, fontSize, vertical = false) {
         return;
       }
       if (col >= maxCols) return;
-      ctx.fillText(char, x + maxWidth - (col + 1) * lineHeight, y + row * lineHeight);
+      ctx.fillText(char, startX - col * lineHeight, startY + row * lineHeight);
       row += 1;
     });
     return;
@@ -719,16 +804,26 @@ function finishGeneratedPages() {
 function addGeneratedPanelArt(targetPage, rect, row, index, mode) {
   const safeIndex = state.assets.length ? Math.max(0, Math.min(index, state.assets.length - 1)) : 0;
   const asset = state.assets[safeIndex];
+  targetPage.objects.push({
+    id: crypto.randomUUID(),
+    kind: "background",
+    x: rect.x + 8,
+    y: rect.y + 8,
+    w: rect.w - 16,
+    h: rect.h - 16,
+    variant: inferBackgroundVariant(row.scene, row.visual),
+    ...backgroundPalette(row.scene, row.visual),
+  });
   if (asset?.img) {
-    const imageW = rect.w * 0.42;
-    const imageH = Math.min(rect.h * 0.72, imageW * (asset.img.height / asset.img.width || 1.4));
+    const imageBoxW = rect.w * 0.36;
+    const imageBoxH = rect.h * 0.66;
     targetPage.objects.push({
       id: crypto.randomUUID(),
       kind: "image",
-      x: rect.x + rect.w - imageW - 22,
-      y: rect.y + rect.h - imageH - 18,
-      w: imageW,
-      h: imageH,
+      x: rect.x + rect.w - imageBoxW - 26,
+      y: rect.y + rect.h - imageBoxH - 20,
+      w: imageBoxW,
+      h: imageBoxH,
       src: asset.src,
       img: asset.img,
     });
@@ -746,6 +841,29 @@ function addGeneratedPanelArt(targetPage, rect, row, index, mode) {
     fontSize: 18,
     vertical: false,
   });
+}
+
+function inferBackgroundVariant(scene = "", visual = "") {
+  const text = `${scene} ${visual}`;
+  if (/教室|学校|授業/.test(text)) return "classroom";
+  if (/廊下|階段/.test(text)) return "hallway";
+  if (/帰り道|公園|街|外|夕方/.test(text)) return "outside";
+  if (/部屋|室内/.test(text)) return "room";
+  return "room";
+}
+
+function backgroundPalette(scene = "", visual = "") {
+  const text = `${scene} ${visual}`;
+  if (/夕方|夕焼け/.test(text)) {
+    return { top: "#f7dfc1", mid: "#fff7ec", floor: "#dfcbb4", floorDark: "#c8ad93" };
+  }
+  if (/夜/.test(text)) {
+    return { top: "#dfe6f2", mid: "#f7f8fb", floor: "#d8dce5", floorDark: "#c1c7d4" };
+  }
+  if (/教室|学校/.test(text)) {
+    return { top: "#eaf5fb", mid: "#fffdf6", floor: "#e8dcc7", floorDark: "#d3c3a9" };
+  }
+  return { top: "#eef6fb", mid: "#fffdf8", floor: "#e5ddd2", floorDark: "#d1c5b8" };
 }
 
 function modeLabel(mode) {
