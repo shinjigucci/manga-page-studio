@@ -562,18 +562,26 @@ async function generateMangaPages() {
   }
 
   const button = document.querySelector("#generateMangaBtn");
+  const startedAt = Date.now();
   button.disabled = true;
+  button.textContent = "生成中";
+  setGenerationOverlay(true, "セリフとコマ割りを作っています。");
   setGenerationStatus("GPTがセリフとコマ割りを設計しています...", "working");
 
   try {
     const storyboard = await requestGptStoryboard(story);
+    setGenerationOverlay(true, "漫画ページを組み立てています。");
     buildPagesFromStoryboard(storyboard);
     setGenerationStatus("GPT設計で漫画ページを生成しました。", "");
   } catch (error) {
+    setGenerationOverlay(true, "ローカル生成に切り替えています。");
     buildPagesFromRows(rows);
     setGenerationStatus("GPT接続が未設定または接続できなかったため、ローカル生成で作りました。", "error");
   } finally {
+    await keepGenerationVisible(startedAt);
     button.disabled = false;
+    button.textContent = "生成";
+    setGenerationOverlay(false);
   }
 }
 
@@ -748,6 +756,21 @@ function setGenerationStatus(message, type = "") {
   const status = document.querySelector("#generationStatus");
   status.textContent = message;
   status.className = `generation-status ${type}`.trim();
+}
+
+function setGenerationOverlay(isActive, message = "") {
+  const overlay = document.querySelector("#generationOverlay");
+  const overlayStatus = document.querySelector("#overlayStatus");
+  overlay.classList.toggle("active", isActive);
+  overlay.setAttribute("aria-hidden", String(!isActive));
+  if (message) overlayStatus.textContent = message;
+}
+
+function keepGenerationVisible(startedAt) {
+  const minimumMs = 900;
+  const elapsed = Date.now() - startedAt;
+  const remaining = Math.max(0, minimumMs - elapsed);
+  return new Promise((resolve) => setTimeout(resolve, remaining));
 }
 
 function renderAssets() {

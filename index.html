@@ -37,10 +37,10 @@
           </label>
 
           <div class="generator-actions">
-            <button id="generateMangaBtn" class="primary">漫画を自動生成</button>
+            <button id="generateMangaBtn" class="primary generate-button">生成</button>
             <button id="downloadAllBtn">全PNG</button>
           </div>
-          <p id="generationStatus" class="generation-status">ストーリーからセリフ・コマ割りを作ります。</p>
+          <p id="generationStatus" class="generation-status">キャラ素材を入れて、ストーリーを書いたら「生成」を押してください。</p>
         </div>
       </aside>
 
@@ -122,6 +122,14 @@
           <p>生成後は選択ツールで移動、Deleteで削除できます。</p>
         </div>
       </aside>
+    </div>
+
+    <div id="generationOverlay" class="generation-overlay" aria-hidden="true">
+      <div class="generation-dialog">
+        <div class="spinner"></div>
+        <h2>生成中</h2>
+        <p id="overlayStatus">セリフとコマ割りを作っています。</p>
+      </div>
     </div>
 
     <script src="./app.js"></script>
