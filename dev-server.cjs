@@ -7,6 +7,7 @@ loadEnvFile(path.join(root, ".env"));
 const port = Number(process.env.PORT || 4177);
 const host = process.env.HOST || "0.0.0.0";
 const openAiModel = process.env.OPENAI_MODEL || "gpt-5.5";
+const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1.5";
 const types = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
@@ -20,6 +21,11 @@ http
 
     if (req.method === "POST" && urlPath === "/api/storyboard") {
       await handleStoryboard(req, res);
+      return;
+    }
+
+    if (req.method === "POST" && urlPath === "/api/panel-image") {
+      await handlePanelImage(req, res);
       return;
     }
 
@@ -110,6 +116,67 @@ async function handleStoryboard(req, res) {
   }
 }
 
+async function handlePanelImage(req, res) {
+  try {
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      sendJson(res, 501, { error: "OPENAI_API_KEY is not set." });
+      return;
+    }
+
+    const body = await readJson(req);
+    const prompt = String(body.prompt || "").trim();
+    const references = Array.isArray(body.references) ? body.references.filter(Boolean).slice(0, 4) : [];
+    const size = String(body.size || "1536x1024");
+    if (!prompt) {
+      sendJson(res, 400, { error: "Prompt is required." });
+      return;
+    }
+
+    const endpoint = references.length ? "edits" : "generations";
+    const payload = {
+      model: imageModel,
+      prompt,
+      n: 1,
+      size,
+      quality: "medium",
+      output_format: "png",
+      moderation: "auto",
+    };
+
+    if (references.length) {
+      payload.images = references.map((image_url) => ({ image_url }));
+      payload.input_fidelity = "high";
+    }
+
+    const response = await fetch(`https://api.openai.com/v1/images/${endpoint}`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      sendJson(res, response.status, {
+        error: data?.error?.message || "Image generation failed.",
+      });
+      return;
+    }
+
+    const b64 = data?.data?.[0]?.b64_json;
+    if (!b64) {
+      sendJson(res, 500, { error: "Image response did not include image data." });
+      return;
+    }
+    sendJson(res, 200, { image: `data:image/png;base64,${b64}` });
+  } catch (error) {
+    sendJson(res, 500, { error: error.message || "Panel image generation failed." });
+  }
+}
+
 function storyboardInstructions() {
   return [
     "You are a professional Japanese manga storyboard director.",
@@ -121,6 +188,8 @@ function storyboardInstructions() {
     "Avoid long narration inside speech bubbles. Use narration for scene captions only.",
     "Prefer punchy spoken Japanese: one short sentence per panel.",
     "Each panel must have a clear scene label, emotion, camera direction, visual description, dialogue, and asset index.",
+    "The visual description must be specific enough for manga image generation: location, composition, background, character action, camera angle, and mood.",
+    "Make each panel visually different. Avoid repeating the same standing pose.",
     "Use assetIndex from 0 to characterCount - 1 when character images exist; otherwise use 0.",
     "Return only JSON that matches the schema.",
   ].join("\n");

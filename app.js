@@ -90,6 +90,10 @@ function drawObject(obj) {
     drawPanelBackground(obj);
   }
 
+  if (obj.kind === "panelImage" && obj.img) {
+    drawImageCover(obj.img, obj.x, obj.y, obj.w, obj.h);
+  }
+
   if (obj.kind === "bubble") {
     ctx.beginPath();
     ctx.ellipse(obj.x + obj.w / 2, obj.y + obj.h / 2, Math.abs(obj.w / 2), Math.abs(obj.h / 2), 0, 0, Math.PI * 2);
@@ -188,6 +192,23 @@ function drawImageContain(img, x, y, maxW, maxH) {
   if (drawH > maxH) {
     drawH = maxH;
     drawW = drawH * ratio;
+  }
+  const drawX = x + (maxW - drawW) / 2;
+  const drawY = y + (maxH - drawH) / 2;
+  ctx.drawImage(img, drawX, drawY, drawW, drawH);
+}
+
+function drawImageCover(img, x, y, maxW, maxH) {
+  const ratio = img.width && img.height ? img.width / img.height : 1;
+  const boxRatio = maxW / maxH;
+  let drawW = maxW;
+  let drawH = maxH;
+  if (ratio > boxRatio) {
+    drawH = maxH;
+    drawW = drawH * ratio;
+  } else {
+    drawW = maxW;
+    drawH = drawW / ratio;
   }
   const drawX = x + (maxW - drawW) / 2;
   const drawY = y + (maxH - drawH) / 2;
@@ -657,6 +678,7 @@ async function generateMangaPages() {
     const storyboard = await requestGptStoryboard(story);
     setGenerationOverlay(true, "漫画ページを組み立てています。");
     buildPagesFromStoryboard(storyboard);
+    await generatePanelImagesForCurrentPages(storyboard);
     setGenerationStatus("GPT設計で漫画ページを生成しました。", "");
   } catch (error) {
     setGenerationOverlay(true, "ローカル生成に切り替えています。");
@@ -682,6 +704,97 @@ async function requestGptStoryboard(story) {
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || "GPT generation failed.");
   return data;
+}
+
+async function requestPanelImage(panel, pageIndex, panelIndex, rect) {
+  const references = state.assets.slice(0, 4).map((asset) => asset.src);
+  const prompt = [
+    "Japanese manga panel, finished black-and-white manga style with subtle screentone shading.",
+    "Create the complete panel artwork as a single image.",
+    "No speech bubbles, no text, no captions, no lettering.",
+    "Use the provided character reference image if present, preserving outfit, hairstyle, face, and age impression.",
+    `Scene: ${panel.scene || ""}`,
+    `Visual: ${panel.visual || ""}`,
+    `Camera: ${panel.camera || ""}`,
+    `Emotion: ${panel.emotion || ""}`,
+    "Strong composition, real background, varied pose, manga lighting, clean line art, professional comic panel.",
+  ].join("\n");
+  const response = await fetch("/api/panel-image", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt,
+      references,
+      size: rect.w >= rect.h ? "1536x1024" : "1024x1536",
+      pageIndex,
+      panelIndex,
+    }),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error || "Panel image generation failed.");
+  return data.image;
+}
+
+async function generatePanelImagesForCurrentPages(storyboard) {
+  const panels = [];
+  (storyboard.pages || []).forEach((storyPage, pageIndex) => {
+    const rects = getLayoutRects(storyPage.layout || chooseAutoLayout((storyPage.panels || []).length));
+    (storyPage.panels || []).slice(0, rects.length).forEach((panel, panelIndex) => {
+      panels.push({ panel, pageIndex, panelIndex, rect: rects[panelIndex] });
+    });
+  });
+
+  const limit = Math.min(panels.length, 8);
+  for (let i = 0; i < limit; i += 1) {
+    const item = panels[i];
+    setGenerationOverlay(true, `コマ画像を生成しています。${i + 1}/${limit}`);
+    setGenerationStatus(`コマ画像を生成しています。${i + 1}/${limit}`, "working");
+    try {
+      const src = await requestPanelImage(item.panel, item.pageIndex, item.panelIndex, {
+        w: item.rect[2],
+        h: item.rect[3],
+      });
+      await addPanelImageToPage(item.pageIndex, item.panelIndex, src);
+      if (item.pageIndex === state.activePage) draw();
+      renderPages();
+    } catch (error) {
+      console.warn(error);
+    }
+  }
+}
+
+function addPanelImageToPage(pageIndex, panelIndex, src) {
+  return new Promise((resolve) => {
+    const targetPage = state.pages[pageIndex];
+    if (!targetPage) {
+      resolve();
+      return;
+    }
+    const panelObjects = targetPage.objects.filter((obj) => obj.kind === "panel");
+    const panel = panelObjects[panelIndex];
+    if (!panel) {
+      resolve();
+      return;
+    }
+    const img = new Image();
+    img.onload = () => {
+      const imageObject = {
+        id: crypto.randomUUID(),
+        kind: "panelImage",
+        x: panel.x + 6,
+        y: panel.y + 6,
+        w: panel.w - 12,
+        h: panel.h - 12,
+        src,
+        img,
+      };
+      const panelObjectIndex = targetPage.objects.findIndex((obj) => obj.id === panel.id);
+      targetPage.objects.splice(panelObjectIndex + 1, 0, imageObject);
+      resolve();
+    };
+    img.onerror = () => resolve();
+    img.src = src;
+  });
 }
 
 function buildPagesFromRows(rows) {
@@ -748,7 +861,7 @@ function buildPagesFromStoryboard(storyboard) {
         assetIndex: Number.isFinite(panel.assetIndex) ? panel.assetIndex : index,
       };
       p.objects.push({ id: crypto.randomUUID(), kind: "panel", x, y, w, h, stroke: "#111", lineWidth: 6 });
-      addGeneratedPanelArt(p, { x, y, w, h }, row, row.assetIndex, "story");
+      addGeneratedPanelArt(p, { x, y, w, h }, row, row.assetIndex, "story", true);
       addGeneratedBubbleAndText(p, { x, y, w, h }, row);
     });
     return p;
@@ -801,7 +914,7 @@ function finishGeneratedPages() {
   draw();
 }
 
-function addGeneratedPanelArt(targetPage, rect, row, index, mode) {
+function addGeneratedPanelArt(targetPage, rect, row, index, mode, skipCharacter = false) {
   const safeIndex = state.assets.length ? Math.max(0, Math.min(index, state.assets.length - 1)) : 0;
   const asset = state.assets[safeIndex];
   targetPage.objects.push({
@@ -814,7 +927,7 @@ function addGeneratedPanelArt(targetPage, rect, row, index, mode) {
     variant: inferBackgroundVariant(row.scene, row.visual),
     ...backgroundPalette(row.scene, row.visual),
   });
-  if (asset?.img) {
+  if (!skipCharacter && asset?.img) {
     const imageBoxW = rect.w * 0.36;
     const imageBoxH = rect.h * 0.66;
     targetPage.objects.push({
